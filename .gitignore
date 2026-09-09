@@ -21,6 +21,9 @@ coverage/
 /.env.local
 !/.env.example
 
+# Local remote-development processes, logs, and self-signed certificates
+/.runtime/
+
 # Editor and operating system files
 .DS_Store
 Thumbs.db

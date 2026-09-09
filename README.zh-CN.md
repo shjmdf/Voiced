@@ -105,6 +105,53 @@ npm run build
 
 将 `frontend/dist` 交给静态文件服务器，并把它的网页 Origin 加入 `FRONTEND_ORIGIN`。防火墙需要放行 Go 的 TCP 监听端口和配置的 UDP 范围。
 
+## 没有域名时的远程调试
+
+脚本支持纯 HTTP 模式，可测试页面、HTTP API、WebSocket、房间和房主管理操作。公网 HTTP 页面不能调用麦克风，因此不能测试语音发布和播放。需要测试语音时，再开启可选的自签名 HTTPS 配置；HTTPS 可以使用高端口，并不要求是 443。两种模式中，Go API 都只监听本机回环地址，通过 Vite 代理访问。
+
+创建被 Git 忽略的本地配置文件，并填入 VPS 使用的值：
+
+```dotenv
+# .env
+LISTEN_ADDR=127.0.0.1:18082
+FRONTEND_ORIGIN=http://PUBLIC_IP:15173
+WEBRTC_UDP_PORT_MIN=46100
+WEBRTC_UDP_PORT_MAX=46199
+WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
+VOICED_DEBUG=true
+```
+
+```dotenv
+# frontend/.env.local
+VITE_DEV_HOST=0.0.0.0
+VITE_DEV_PORT=15173
+VITE_BACKEND_URL=http://127.0.0.1:18082
+VITE_API_BASE_URL=
+VITE_WS_BASE_URL=
+DEV_HTTPS_KEY_FILE=
+DEV_HTTPS_CERT_FILE=
+DEV_HTTPS_PUBLIC_NAME=PUBLIC_IP
+NODE_BIN_DIR=/path/to/node/bin
+```
+
+替换 `PUBLIC_IP` 和 `NODE_BIN_DIR`。两个 `DEV_HTTPS_*_FILE` 均为空时，脚本启动 HTTP，不会生成证书；它会使用 `nohup` 在后台启动两个进程：
+
+```bash
+bash scripts/start-remote-dev.sh
+```
+
+在远程浏览器打开 `http://PUBLIC_IP:15173`。可以用下面命令停止进程和查看日志：
+
+```bash
+bash scripts/stop-remote-dev.sh
+tail -f .runtime/logs/backend.log
+tail -f .runtime/logs/frontend.log
+```
+
+需要在 VPS 防火墙和云厂商安全组或防火墙中放行 TCP `15173` 和 UDP `46100-46199`。前端端口和 UDP 范围只是示例，可以换成未占用端口；两个本地配置文件中对应的值必须保持一致。
+
+之后需要测试麦克风时，把 `FRONTEND_ORIGIN` 改为 `https://PUBLIC_IP:PORT`，设置 `DEV_HTTPS_KEY_FILE` 和 `DEV_HTTPS_CERT_FILE`，并让 Vite 使用相同端口。证书文件不存在时，`DEV_HTTPS_PUBLIC_NAME` 会让脚本生成一个包含该 IP 的 14 天自签名证书。打开 HTTPS 地址后手动接受告警即可。自签名证书只适用于调试，公开服务应使用受信任证书。
+
 ## HTTP API
 
 所有 JSON 请求都需要 `Content-Type: application/json`。错误响应格式一致：

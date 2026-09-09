@@ -97,6 +97,53 @@ npm run build
 
 Serve `frontend/dist` with a static file server and add the page Origin to `FRONTEND_ORIGIN`. Open the Go TCP listen port and the configured UDP range in the firewall.
 
+## Remote development without a domain
+
+The included scripts support an HTTP-only mode for testing the page, HTTP API, WebSocket, rooms, and owner actions. A public HTTP page cannot access the microphone, so it cannot test voice publishing or playback. For voice testing, enable the optional self-signed HTTPS configuration; HTTPS can use a high port and does not need to be 443. In both modes, the Go API stays on loopback behind Vite's proxy.
+
+Create local, ignored configuration files with values suited to the VPS:
+
+```dotenv
+# .env
+LISTEN_ADDR=127.0.0.1:18082
+FRONTEND_ORIGIN=http://PUBLIC_IP:15173
+WEBRTC_UDP_PORT_MIN=46100
+WEBRTC_UDP_PORT_MAX=46199
+WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
+VOICED_DEBUG=true
+```
+
+```dotenv
+# frontend/.env.local
+VITE_DEV_HOST=0.0.0.0
+VITE_DEV_PORT=15173
+VITE_BACKEND_URL=http://127.0.0.1:18082
+VITE_API_BASE_URL=
+VITE_WS_BASE_URL=
+DEV_HTTPS_KEY_FILE=
+DEV_HTTPS_CERT_FILE=
+DEV_HTTPS_PUBLIC_NAME=PUBLIC_IP
+NODE_BIN_DIR=/path/to/node/bin
+```
+
+Replace `PUBLIC_IP` and `NODE_BIN_DIR`. With both `DEV_HTTPS_*_FILE` values empty, the script starts HTTP and does not create a certificate. It starts both processes with `nohup`:
+
+```bash
+bash scripts/start-remote-dev.sh
+```
+
+Open `http://PUBLIC_IP:15173` in the remote browser. Stop the processes and inspect their logs with:
+
+```bash
+bash scripts/stop-remote-dev.sh
+tail -f .runtime/logs/backend.log
+tail -f .runtime/logs/frontend.log
+```
+
+Allow TCP `15173` and UDP `46100-46199` in both the VPS firewall and the cloud provider's security-group or firewall rules. The frontend port and UDP range are examples; choose unused ports and keep the same values in the local configuration files.
+
+To test the microphone later, set `FRONTEND_ORIGIN` to an `https://PUBLIC_IP:PORT` value, set both `DEV_HTTPS_KEY_FILE` and `DEV_HTTPS_CERT_FILE`, and choose the same Vite port. If the certificate files do not exist, `DEV_HTTPS_PUBLIC_NAME` makes the script create a 14-day self-signed certificate. Open the HTTPS address and explicitly accept the warning. A self-signed certificate is for debugging only; use a trusted certificate for a public service.
+
 ## HTTP API
 
 All JSON requests require `Content-Type: application/json`. Error responses share this format:
