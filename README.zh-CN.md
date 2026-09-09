@@ -181,6 +181,16 @@ tail -f .runtime/logs/frontend.log
 
 之后需要测试麦克风时，把 `FRONTEND_ORIGIN` 改为 `https://PUBLIC_IP:PORT`，设置 `DEV_HTTPS_KEY_FILE` 和 `DEV_HTTPS_CERT_FILE`，并让 Vite 使用相同端口。证书文件不存在时，`DEV_HTTPS_PUBLIC_NAME` 会让脚本生成一个包含该 IP 的 14 天自签名证书。打开 HTTPS 地址后手动接受告警即可。自签名证书只适用于调试，公开服务应使用受信任证书。
 
+## 使用 Caddy 部署
+
+对于新的 Debian 或 Ubuntu VPS，部署脚本会安装 Go、Node.js、Caddy 和 UFW，构建后端与静态前端，创建 systemd 服务，并为一个域名写入 Caddy 配置。运行前先把域名 A 记录指向 VPS，并在云防火墙中放行 TCP `80`、TCP `443` 和选定的 UDP 范围：
+
+```bash
+sudo bash scripts/deploy-caddy.sh --domain voiced.example.com --enable-ufw
+```
+
+脚本默认保留 SSH 的 `31422` 端口，可以用 `--ssh-port` 修改；WebRTC UDP 端口通过 `--udp-min` 和 `--udp-max` 设置。首次运行时它会生成并输出访问令牌。完整选项见 `--help`。
+
 ## HTTP API
 
 所有 JSON 请求都需要 `Content-Type: application/json`。错误响应格式一致：

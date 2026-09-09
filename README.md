@@ -173,6 +173,16 @@ Allow TCP `15173` and UDP `46100-46199` in both the VPS firewall and the cloud p
 
 To test the microphone later, set `FRONTEND_ORIGIN` to an `https://PUBLIC_IP:PORT` value, set both `DEV_HTTPS_KEY_FILE` and `DEV_HTTPS_CERT_FILE`, and choose the same Vite port. If the certificate files do not exist, `DEV_HTTPS_PUBLIC_NAME` makes the script create a 14-day self-signed certificate. Open the HTTPS address and explicitly accept the warning. A self-signed certificate is for debugging only; use a trusted certificate for a public service.
 
+## Caddy deployment
+
+For a new Debian or Ubuntu VPS, the deployment script installs Go, Node.js, Caddy, and UFW; builds the backend and static frontend; creates the systemd service; and configures Caddy for one domain. Point the domain's A record to the VPS and allow TCP 80, TCP 443, and the selected UDP range in the cloud firewall before running it:
+
+```bash
+sudo bash scripts/deploy-caddy.sh --domain voiced.example.com --enable-ufw
+```
+
+The script preserves SSH port `31422` by default. Change it with `--ssh-port`; set WebRTC ports with `--udp-min` and `--udp-max`. It prints a generated access token only on its first run. See `--help` for all options.
+
 ## HTTP API
 
 All JSON requests require `Content-Type: application/json`. Error responses share this format:
