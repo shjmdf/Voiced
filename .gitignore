@@ -1,0 +1,28 @@
+# Go build and test output
+/server
+/voiced
+*.test
+*.out
+coverage.out
+coverage/
+
+# Frontend dependencies and build output
+/frontend/node_modules/
+/frontend/dist/
+/frontend/.vite/
+/frontend/.env
+/frontend/.env.local
+/frontend/.env.*.local
+!/frontend/.env.example
+!/frontend/.env.production.example
+
+# Local server configuration
+/.env
+/.env.local
+!/.env.example
+
+# Editor and operating system files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
