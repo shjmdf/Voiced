@@ -2,7 +2,7 @@
 
 [English](README.md) | 简体中文
 
-Voiced 是一个临时语音房服务。作为用户和管理员，都不需要注册和登录：在你创建或加入房间后，浏览器得到一个仅在当前会话中使用的 `participantId`。关闭页面、点击离开或 WebSocket 断开后，该成员会从房间删除。房主离开时，加入最早的剩余成员成为新房主；最后一个成员离开时，房间会删除。
+Voiced 是一个临时语音房服务。作为用户和管理员，都不需要注册和登录，但创建或加入房间需要输入服务端维护的共享访问令牌。创建或加入成功后，浏览器得到一个仅在当前会话中使用的 `participantId`。关闭页面、点击离开或 WebSocket 断开后，该成员会从房间删除。房主离开时，加入最早的剩余成员成为新房主；最后一个成员离开时，房间会删除。
 
 服务端用 Go 编写。
 
@@ -55,7 +55,13 @@ cp .env.example .env
 cp frontend/.env.example frontend/.env.local
 ```
 
-修改两个文件中的地址和端口。开发时，`FRONTEND_ORIGIN` 必须与浏览器实际访问 Vite 的地址一致，例如 `http://127.0.0.1:5173`。然后在两个终端运行：
+修改两个文件中的地址和端口。开发时，`FRONTEND_ORIGIN` 必须与浏览器实际访问 Vite 的地址一致，例如 `http://127.0.0.1:5173`。首次启动前先创建服务端访问令牌；脚本会以仅所有者可读写的权限保存它，之后需要把输出的值发给允许创建或加入房间的人。
+
+```bash
+bash scripts/set-access-token.sh --generate
+```
+
+然后在两个终端运行：
 
 ```bash
 # terminal 1
@@ -78,6 +84,7 @@ npm run dev
 go run ./cmd/server \
   -listen-addr 127.0.0.1:8082 \
   -frontend-origin http://127.0.0.1:5173 \
+  -access-token-file ./.runtime/access-token \
   -udp-port-min 40000 \
   -udp-port-max 40100 \
   -stun-urls stun:stun.l.google.com:19302
@@ -89,12 +96,32 @@ go run ./cmd/server \
 | --- | --- | --- |
 | `-listen-addr` | `LISTEN_ADDR` | Go HTTP 和 WebSocket 监听地址，例如 `0.0.0.0:8082` |
 | `-frontend-origin` | `FRONTEND_ORIGIN` | 允许访问 HTTP API 和 WebSocket 的 Origin；多个值用逗号分隔 |
+| `-access-token-file` | `ACCESS_TOKEN_FILE` | 保存创建或加入房间所需共享令牌的文件 |
 | `-udp-port-min` | `WEBRTC_UDP_PORT_MIN` | Pion 使用的 UDP 范围起始端口 |
 | `-udp-port-max` | `WEBRTC_UDP_PORT_MAX` | Pion 使用的 UDP 范围结束端口 |
 | `-stun-urls` | `WEBRTC_STUN_URLS` | 逗号分隔的 STUN URL |
 | `-debug-media` | `VOICED_DEBUG` | 是否启用只读的媒体调试接口 |
 
 UDP 起止端口必须同时设置，并且起始端口不能大于结束端口。两项都不设置时，由操作系统为 Pion 分配可用 UDP 端口。跨 NAT 部署通常还需要 TURN；当前接口只发布不含凭据的 ICE URL，TURN 的临时凭据应由部署环境另行生成。
+
+## 访问令牌
+
+访问令牌保护 `POST /api/rooms` 和 `POST /api/rooms/{roomId}/join`。前端只在创建或加入请求中提交令牌，不会把它保存到浏览器存储中。服务端会在每次请求时读取 `ACCESS_TOKEN_FILE`，因此可直接用脚本轮换令牌，无需重启服务：
+
+```bash
+# 在终端中输入令牌，输入时不会回显。
+bash scripts/set-access-token.sh
+
+# 或者生成一个新令牌。终端关闭前保存脚本输出的值。
+bash scripts/set-access-token.sh --generate
+
+# 由密钥管理工具提供令牌时可使用标准输入。
+printf '%s\n' 'a-token-from-your-secret-manager' | bash scripts/set-access-token.sh --stdin
+```
+
+脚本会原子替换令牌文件；替换已有文件时会保留原有所有者和权限。轮换只影响之后的创建和加入请求，已经在房间内的成员不会被强制断开。
+
+令牌位于 JSON 请求体中。公网 HTTP 会明文传输它，因此纯 HTTP 远程调试不具备保密性。令牌需要保护可访问服务时，应使用 HTTPS，或限制在 Tailscale 等私有网络中访问。
 
 在公网中，浏览器访问页面需要 HTTPS 才能使用麦克风；对应的 WebSocket 地址应使用 WSS。生产构建前，复制并修改 `frontend/.env.production.example`，设置 `VITE_API_BASE_URL` 和 `VITE_WS_BASE_URL`，然后执行：
 
@@ -115,6 +142,7 @@ npm run build
 # .env
 LISTEN_ADDR=127.0.0.1:18082
 FRONTEND_ORIGIN=http://PUBLIC_IP:15173
+ACCESS_TOKEN_FILE=./.runtime/access-token
 WEBRTC_UDP_PORT_MIN=46100
 WEBRTC_UDP_PORT_MAX=46199
 WEBRTC_STUN_URLS=stun:stun.l.google.com:19302
@@ -134,9 +162,10 @@ DEV_HTTPS_PUBLIC_NAME=PUBLIC_IP
 NODE_BIN_DIR=/path/to/node/bin
 ```
 
-替换 `PUBLIC_IP` 和 `NODE_BIN_DIR`。两个 `DEV_HTTPS_*_FILE` 均为空时，脚本启动 HTTP，不会生成证书；它会使用 `nohup` 在后台启动两个进程：
+替换 `PUBLIC_IP` 和 `NODE_BIN_DIR`。启动前创建访问令牌。两个 `DEV_HTTPS_*_FILE` 均为空时，脚本启动 HTTP，不会生成证书；它会使用 `nohup` 在后台启动两个进程：
 
 ```bash
+bash scripts/set-access-token.sh --generate
 bash scripts/start-remote-dev.sh
 ```
 
@@ -192,9 +221,9 @@ tail -f .runtime/logs/frontend.log
 | --- | --- | --- |
 | `GET /health` | 无 | `200 {"status":"ok"}` |
 | `GET /api/rooms` | 无 | `200 Room[]` |
-| `POST /api/rooms` | `{"name":"Study room","nickname":"Alex"}` | `201 {"room": Room, "participant": Participant}` |
+| `POST /api/rooms` | `{"name":"Study room","nickname":"Alex","token":"shared-token"}` | `201 {"room": Room, "participant": Participant}` |
 | `GET /api/rooms/{roomId}` | 无 | `200 Room` |
-| `POST /api/rooms/{roomId}/join` | `{"nickname":"Alex"}` | `200 {"room": Room, "participant": Participant}` |
+| `POST /api/rooms/{roomId}/join` | `{"nickname":"Alex","token":"shared-token"}` | `200 {"room": Room, "participant": Participant}` |
 | `GET /api/rooms/{roomId}/participants` | 无 | `200 Participant[]` |
 | `GET /api/webrtc-config` | 无 | `200 {"iceServers":[{"urls":["stun:..."]}]}` |
 | `GET /api/debug/media` | 无 | `200` 媒体统计；只在 `VOICED_DEBUG=true` 或 `-debug-media` 时可用 |

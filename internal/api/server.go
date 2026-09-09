@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 
+	"voiced/internal/access"
 	"voiced/internal/media"
 	"voiced/internal/room"
 )
@@ -13,11 +14,12 @@ import (
 type Server struct {
 	rooms      *room.Manager
 	media      *media.Manager
+	access     access.Verifier
 	debugMedia bool
 }
 
-func NewServer(rooms *room.Manager, mediaManager *media.Manager, debugMedia bool) *Server {
-	return &Server{rooms: rooms, media: mediaManager, debugMedia: debugMedia}
+func NewServer(rooms *room.Manager, mediaManager *media.Manager, accessVerifier access.Verifier, debugMedia bool) *Server {
+	return &Server{rooms: rooms, media: mediaManager, access: accessVerifier, debugMedia: debugMedia}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -88,8 +90,12 @@ func (s *Server) createRoom(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Name     string `json:"name"`
 		Nickname string `json:"nickname"`
+		Token    string `json:"token"`
 	}
 	if !decodeJSON(w, r, &request) {
+		return
+	}
+	if !s.verifyAccessToken(w, request.Token) {
 		return
 	}
 
@@ -119,8 +125,12 @@ func (s *Server) getRoom(w http.ResponseWriter, r *http.Request) {
 func (s *Server) joinRoom(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Nickname string `json:"nickname"`
+		Token    string `json:"token"`
 	}
 	if !decodeJSON(w, r, &request) {
+		return
+	}
+	if !s.verifyAccessToken(w, request.Token) {
 		return
 	}
 
@@ -176,6 +186,24 @@ func writeRoomError(w http.ResponseWriter, err error) {
 	default:
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "internal server error")
 	}
+}
+
+func (s *Server) verifyAccessToken(w http.ResponseWriter, token string) bool {
+	if s.access == nil {
+		writeError(w, http.StatusServiceUnavailable, "ACCESS_TOKEN_UNAVAILABLE", "access token is unavailable")
+		return false
+	}
+
+	err := s.access.Verify(token)
+	switch {
+	case err == nil:
+		return true
+	case errors.Is(err, access.ErrInvalidToken):
+		writeError(w, http.StatusForbidden, "ACCESS_DENIED", "access token is invalid")
+	default:
+		writeError(w, http.StatusServiceUnavailable, "ACCESS_TOKEN_UNAVAILABLE", "access token is unavailable")
+	}
+	return false
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

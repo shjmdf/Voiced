@@ -12,6 +12,7 @@ import (
 
 	"github.com/pion/webrtc/v4"
 
+	"voiced/internal/access"
 	"voiced/internal/api"
 	"voiced/internal/media"
 	"voiced/internal/room"
@@ -21,6 +22,7 @@ import (
 type serverConfig struct {
 	listenAddress   string
 	frontendOrigins []string
+	accessTokenFile string
 	mediaConfig     media.Config
 	debugMedia      bool
 }
@@ -33,6 +35,10 @@ func main() {
 
 	rooms := room.NewManager()
 	hub := signaling.NewHub()
+	accessVerifier, err := access.NewFileVerifier(config.accessTokenFile)
+	if err != nil {
+		log.Fatal(err)
+	}
 	mediaManager, err := media.NewManager(config.mediaConfig, func(signal media.Signal) {
 		hub.SendTo(signal.RoomID, signal.ParticipantID, signaling.NewMessage(signal.Type, signal.Payload))
 	}, func(roomID string, participantID string) bool {
@@ -43,7 +49,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	apiServer := api.NewServer(rooms, mediaManager, config.debugMedia)
+	apiServer := api.NewServer(rooms, mediaManager, accessVerifier, config.debugMedia)
 	signalingHandler := signaling.NewHandler(rooms, hub, mediaManager, config.frontendOrigins)
 	apiHandler := api.WithCORS(apiServer.Routes(), config.frontendOrigins)
 
@@ -73,6 +79,7 @@ func main() {
 func loadServerConfig() (serverConfig, error) {
 	listenAddress := flag.String("listen-addr", os.Getenv("LISTEN_ADDR"), "HTTP API and WebSocket address; overrides LISTEN_ADDR")
 	frontendOriginValue := flag.String("frontend-origin", os.Getenv("FRONTEND_ORIGIN"), "comma-separated browser origins; overrides FRONTEND_ORIGIN")
+	accessTokenFile := flag.String("access-token-file", os.Getenv("ACCESS_TOKEN_FILE"), "shared access token file; overrides ACCESS_TOKEN_FILE")
 	udpPortMin := flag.String("udp-port-min", os.Getenv("WEBRTC_UDP_PORT_MIN"), "WebRTC UDP range start; overrides WEBRTC_UDP_PORT_MIN")
 	udpPortMax := flag.String("udp-port-max", os.Getenv("WEBRTC_UDP_PORT_MAX"), "WebRTC UDP range end; overrides WEBRTC_UDP_PORT_MAX")
 	stunURLs := flag.String("stun-urls", os.Getenv("WEBRTC_STUN_URLS"), "comma-separated STUN URLs; overrides WEBRTC_STUN_URLS")
@@ -85,6 +92,9 @@ func loadServerConfig() (serverConfig, error) {
 	frontendOrigins := splitValues(*frontendOriginValue)
 	if len(frontendOrigins) == 0 {
 		return serverConfig{}, fmt.Errorf("frontend origin is required: set FRONTEND_ORIGIN or use -frontend-origin")
+	}
+	if strings.TrimSpace(*accessTokenFile) == "" {
+		return serverConfig{}, fmt.Errorf("access token file is required: set ACCESS_TOKEN_FILE or use -access-token-file")
 	}
 
 	min, err := parsePort("WEBRTC_UDP_PORT_MIN", *udpPortMin)
@@ -104,6 +114,7 @@ func loadServerConfig() (serverConfig, error) {
 	return serverConfig{
 		listenAddress:   strings.TrimSpace(*listenAddress),
 		frontendOrigins: frontendOrigins,
+		accessTokenFile: strings.TrimSpace(*accessTokenFile),
 		mediaConfig:     mediaConfig,
 		debugMedia:      *debugMedia,
 	}, nil

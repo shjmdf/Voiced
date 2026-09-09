@@ -497,12 +497,13 @@ function Lobby({ notice, onCreate, onJoin }: { notice: string; onCreate: (path: 
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const nickname = String(form.get("nickname") || "");
+    const token = String(form.get("token") || "");
     if (mode === "create") {
-      void onCreate("/api/rooms", { name: String(form.get("name") || ""), nickname });
+      void onCreate("/api/rooms", { name: String(form.get("name") || ""), nickname, token });
       return;
     }
     const roomID = String(form.get("roomId") || "");
-    void onJoin(`/api/rooms/${encodeURIComponent(roomID)}/join`, { nickname });
+    void onJoin(`/api/rooms/${encodeURIComponent(roomID)}/join`, { nickname, token });
   };
 
   return <main className="lobby-shell">
@@ -516,6 +517,7 @@ function Lobby({ notice, onCreate, onJoin }: { notice: string; onCreate: (path: 
       <form onSubmit={submit} className="lobby-form">
         {mode === "create" ? <label className="field-label">Room name<input name="name" placeholder="Team call" maxLength={80} required /></label> : <label className="field-label">Room ID<input name="roomId" placeholder="Paste a room ID" required /></label>}
         <label className="field-label">Display name<input name="nickname" placeholder="Your name" maxLength={40} required /></label>
+        <label className="field-label">Access token<input name="token" type="password" autoComplete="off" placeholder="Token required by this server" required /></label>
         <button className="button primary submit-button" type="submit">{mode === "create" ? "Create room" : "Join room"}<span>→</span></button>
       </form>
     </section>

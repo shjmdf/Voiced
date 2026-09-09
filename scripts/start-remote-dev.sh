@@ -31,12 +31,27 @@ for command in go npm; do
   fi
 done
 
-for value in LISTEN_ADDR FRONTEND_ORIGIN VITE_DEV_HOST VITE_DEV_PORT VITE_BACKEND_URL; do
+for value in LISTEN_ADDR FRONTEND_ORIGIN ACCESS_TOKEN_FILE VITE_DEV_HOST VITE_DEV_PORT VITE_BACKEND_URL; do
   if [[ -z "${!value:-}" ]]; then
     printf '%s must be set in the local environment files.\n' "$value" >&2
     exit 1
   fi
 done
+
+project_path() {
+  if [[ "$1" = /* ]]; then
+    printf '%s\n' "$1"
+    return
+  fi
+  printf '%s/%s\n' "$project_root" "$1"
+}
+
+access_token_path="$(project_path "$ACCESS_TOKEN_FILE")"
+if [[ ! -s "$access_token_path" ]]; then
+  printf 'Access token file is missing or empty: %s\n' "$access_token_path" >&2
+  printf 'Create it with: bash scripts/set-access-token.sh --generate\n' >&2
+  exit 1
+fi
 
 mkdir -p "$runtime_dir/logs"
 
