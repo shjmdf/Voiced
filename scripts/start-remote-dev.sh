@@ -92,6 +92,11 @@ if process_is_running "$runtime_dir/backend.pid" || process_is_running "$runtime
   exit 1
 fi
 
+if command -v fuser >/dev/null 2>&1 && fuser -n tcp "$VITE_DEV_PORT" >/dev/null 2>&1; then
+  printf 'VITE_DEV_PORT %s is already in use. Run bash scripts/stop-remote-dev.sh first.\n' "$VITE_DEV_PORT" >&2
+  exit 1
+fi
+
 rm -f "$runtime_dir/backend.pid" "$runtime_dir/frontend.pid"
 
 (
@@ -111,6 +116,10 @@ printf '%s\n' "$backend_pid" >"$runtime_dir/backend.pid"
 
 sleep 1
 if ! process_is_running "$runtime_dir/backend.pid" || ! process_is_running "$runtime_dir/frontend.pid"; then
+  if process_is_running "$runtime_dir/backend.pid"; then
+    kill "$(<"$runtime_dir/backend.pid")"
+  fi
+  rm -f "$runtime_dir/backend.pid" "$runtime_dir/frontend.pid"
   printf 'A process exited during startup. Check %s/logs.\n' "$runtime_dir" >&2
   exit 1
 fi
